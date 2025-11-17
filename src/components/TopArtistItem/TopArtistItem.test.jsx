@@ -71,4 +71,21 @@ describe('TopArtistItem component', () => {
         // uncomment to debug
         //screen.debug();
     });
+    test('affiche 1 si index passé = 0', () => {
+    const artist = {
+        id: 'artist3',
+        name: 'Index Test Artist',
+        images: [{ url: 'img.jpg' }],
+        genres: ['electro'],
+        followers: { total: 123 },
+        popularity: 50,
+        external_urls: { spotify: 'https://open.spotify.com/artist/artist3' }
+    };
+
+    render(<TopArtistItem artist={artist} index={0} />);
+
+    const listItem = screen.getByTestId(`top-artist-item-${artist.id}`);
+    // Accepter "1", "1." ou "1)" suivi éventuellement d'espaces et du nom de l'artiste
+    expect(listItem).toHaveTextContent(/^1[.)]?\s*Index Test Artist/i);
+    });
 });
