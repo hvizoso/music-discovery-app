@@ -81,8 +81,8 @@ describe('PlaylistsPage', () => {
         const heading = await screen.findByRole('heading', { level: 1, name: 'Your Playlists' });
         expect(heading).toBeInTheDocument();
 
-        // should render heading of level 2 showing total playlist count
-        const countHeading = await screen.findByRole('heading', { level: 2, name: `${limit} Playlists` });
+        // should render heading of level 2 showing total playlist count from API
+        const countHeading = await screen.findByRole('heading', { level: 2, name: `${playlistsData.total} Playlists` });
         expect(countHeading).toBeInTheDocument();
 
         // verify each playlist item rendered, don't check details here as covered in PlaylistItem tests
@@ -150,12 +150,32 @@ describe('PlaylistsPage', () => {
         const heading1 = screen.getByRole('heading', { level: 1, name: `Your Playlists` });
         expect(heading1).toHaveClass('playlists-title', 'page-title');
 
-        // should have heading level 2 with appropriate class name
-        const heading2 = screen.getByRole('heading', { level: 2, name: `${limit} Playlists` });
+        // should have heading level 2 with appropriate class name (total from API)
+        const heading2 = screen.getByRole('heading', { level: 2, name: `${playlistsData.total} Playlists` });
         expect(heading2).toHaveClass('playlists-count');
 
         // should have ordered list with appropriate class name
         const list = screen.getByRole('list');
         expect(list).toHaveClass('playlists-list');
     });
+
+    test('affiche le nombre correct de playlists provenant de l\'API', async () => {
+		// Mock API to return a specific total different du mock par défaut
+		const apiData = {
+			items: [
+				{ id: 'p1', name: 'A Playlist', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'UserA' }, tracks: { total: 1 }, external_urls: { spotify: 'https://open.spotify.com/playlist/p1' } },
+			],
+			total: 42
+		};
+
+		jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({ data: apiData, error: null });
+
+		// Render the page and wait for load
+		renderPlaylistsPage();
+		await waitForLoadingToFinish();
+
+		// Vérifier que le heading de niveau 2 affiche bien le total renvoyé par l'API
+		const countHeading = await screen.findByRole('heading', { level: 2, name: `${apiData.total} Playlists` });
+		expect(countHeading).toBeInTheDocument();
+	})
 });
