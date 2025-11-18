@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 /**
  * Number of playlists to fetch
  */
-export const limit = 50;
+export const limit = 40;
 
 /**
  * Playlists Page
