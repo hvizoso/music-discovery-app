@@ -179,65 +179,67 @@ describe('PlaylistsPage', () => {
 		expect(countHeading).toBeInTheDocument();
 	})
         test('handles empty API response by resetting playlists and total to 0', async () => {
-        jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({});
-        renderPlaylistsPage();
-        await waitForLoadingToFinish();
+    jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({});
+    renderPlaylistsPage();
+    await waitForLoadingToFinish();
 
-        const countHeading = await screen.findByRole('heading', { level: 2, name: '0 Playlists' });
-        expect(countHeading).toBeInTheDocument();
+    const countHeading = await screen.findByRole('heading', { level: 2, name: '0 Playlists' });
+    expect(countHeading).toBeInTheDocument();
 
-        const list = screen.getByRole('list');
-        expect(list).toBeInTheDocument();
-        expect(list.childElementCount).toBe(0);
+    const list = screen.getByRole('list');
+    expect(list).toBeInTheDocument();
+    // Utiliser le matcher fourni par jest-dom au lieu de childElementCount
+    expect(list).toBeEmptyDOMElement();
 
-        const items = screen.queryAllByTestId((_, el) => el && el.id && el.id.startsWith('playlist-item-'));
-        expect(items.length).toBe(0);
+    // Utiliser queryAllByTestId avec une regex pour éviter l'accès direct aux nœuds
+    const items = screen.queryAllByTestId(/^playlist-item-/);
+    expect(items).toHaveLength(0);
+});
+
+test('renders playlists when API returns playlists array shape', async () => {
+    jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({
+        playlists: [
+            { id: 'pa1', name: 'Playlist A', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerA' }, tracks: { total: 3 }, external_urls: { spotify: 'https://open.spotify.com/playlist/pa1' } },
+            { id: 'pa2', name: 'Playlist B', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerB' }, tracks: { total: 4 }, external_urls: { spotify: 'https://open.spotify.com/playlist/pa2' } }
+        ],
+        total: 2,
+        error: null
     });
 
-        test('renders playlists when API returns playlists array shape', async () => {
-        jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({
-            playlists: [
-                { id: 'pa1', name: 'Playlist A', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerA' }, tracks: { total: 3 }, external_urls: { spotify: 'https://open.spotify.com/playlist/pa1' } },
-                { id: 'pa2', name: 'Playlist B', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerB' }, tracks: { total: 4 }, external_urls: { spotify: 'https://open.spotify.com/playlist/pa2' } }
-            ],
-            total: 2,
-            error: null
-        });
+    renderPlaylistsPage();
+    await waitForLoadingToFinish();
 
-        renderPlaylistsPage();
-        await waitForLoadingToFinish();
+    expect(spotifyApi.fetchUserPlaylists).toHaveBeenCalledTimes(1);
+    const countHeading = await screen.findByRole('heading', { level: 2, name: '2 Playlists' });
+    expect(countHeading).toBeInTheDocument();
+    expect(await screen.findByTestId('playlist-item-pa1')).toBeInTheDocument();
+    expect(await screen.findByTestId('playlist-item-pa2')).toBeInTheDocument();
+});
 
-        expect(spotifyApi.fetchUserPlaylists).toHaveBeenCalledTimes(1);
-        const countHeading = await screen.findByRole('heading', { level: 2, name: '2 Playlists' });
-        expect(countHeading).toBeInTheDocument();
-        expect(await screen.findByTestId('playlist-item-pa1')).toBeInTheDocument();
-        expect(await screen.findByTestId('playlist-item-pa2')).toBeInTheDocument();
-    });
+test('uses items.length when data.total is missing', async () => {
+    const itemsOnly = {
+        items: [
+            { id: 'px1', name: 'Only One', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerX' }, tracks: { total: 1 }, external_urls: { spotify: 'https://open.spotify.com/playlist/px1' } }
+        ]
+    };
 
-    test('uses items.length when data.total is missing', async () => {
-        const itemsOnly = {
-            items: [
-                { id: 'px1', name: 'Only One', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerX' }, tracks: { total: 1 }, external_urls: { spotify: 'https://open.spotify.com/playlist/px1' } }
-            ]
-        };
+    jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({ data: itemsOnly, error: null });
 
-        jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({ data: itemsOnly, error: null });
+    renderPlaylistsPage();
+    await waitForLoadingToFinish();
 
-        renderPlaylistsPage();
-        await waitForLoadingToFinish();
+    const countHeading = await screen.findByRole('heading', { level: 2, name: '1 Playlists' });
+    expect(countHeading).toBeInTheDocument();
+    expect(await screen.findByTestId('playlist-item-px1')).toBeInTheDocument();
+});
 
-        const countHeading = await screen.findByRole('heading', { level: 2, name: '1 Playlists' });
-        expect(countHeading).toBeInTheDocument();
-        expect(await screen.findByTestId('playlist-item-px1')).toBeInTheDocument();
-    });
+test('does not call API when no token is present', () => {
+    jest.spyOn(window.localStorage.__proto__, 'getItem').mockImplementation(() => null);
+    const fetchSpy = jest.spyOn(spotifyApi, 'fetchUserPlaylists');
 
-    test('does not call API when no token is present', () => {
-        jest.spyOn(window.localStorage.__proto__, 'getItem').mockImplementation(() => null);
-        const fetchSpy = jest.spyOn(spotifyApi, 'fetchUserPlaylists');
+    renderPlaylistsPage();
 
-        renderPlaylistsPage();
-
-        expect(fetchSpy).not.toHaveBeenCalled();
-        expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
-    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+});
 });
