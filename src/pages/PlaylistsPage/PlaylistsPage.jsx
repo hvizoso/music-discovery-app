@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 /**
  * Number of playlists to fetch
  */
-export const limit = 10;
+export const limit = 50;
 
 /**
  * Playlists Page
@@ -23,6 +23,7 @@ export default function PlaylistsPage() {
 
   // state for playlists data
   const [playlists, setPlaylists] = useState([]);
+  const [total, setTotal] = useState(0);
 
   // state for loading and error
   const [loading, setLoading] = useState(true);
@@ -45,7 +46,19 @@ export default function PlaylistsPage() {
             setError(res.error);
           }
         }
-        setPlaylists(res.data.items);
+
+        // Défensive: supporter différentes formes de réponse et éviter d'accéder à des champs undefined
+        if (res.data && Array.isArray(res.data.items)) {
+          setPlaylists(res.data.items);
+          setTotal(res.data.total ?? res.data.items.length);
+        } else if (Array.isArray(res.playlists)) {
+          setPlaylists(res.playlists);
+          setTotal(res.total ?? res.playlists.length);
+        } else {
+          // pas de données, remettre à zéro
+          setPlaylists([]);
+          setTotal(0);
+        }
       })
       .catch(err => { setError(err.message); })
       .finally(() => { setLoading(false); });
@@ -54,7 +67,7 @@ export default function PlaylistsPage() {
   return (
     <section className="playlists-container page-container" aria-labelledby="playlists-title">
       <h1 id="playlists-title" className="playlists-title page-title">Your Playlists</h1>
-      <h2 className="playlists-count">{limit} Playlists</h2>
+      <h2 className="playlists-count">{total} Playlists</h2>
       {loading && <output className="playlists-loading" data-testid="loading-indicator">Loading playlists…</output>}
       {error && !loading && <div className="playlists-error" role="alert">{error}</div>}
       {!loading && !error && (

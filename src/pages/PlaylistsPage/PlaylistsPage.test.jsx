@@ -81,8 +81,8 @@ describe('PlaylistsPage', () => {
         const heading = await screen.findByRole('heading', { level: 1, name: 'Your Playlists' });
         expect(heading).toBeInTheDocument();
 
-        // should render heading of level 2 showing total playlist count
-        const countHeading = await screen.findByRole('heading', { level: 2, name: `${limit} Playlists` });
+        // should render heading of level 2 showing total playlist count from API
+        const countHeading = await screen.findByRole('heading', { level: 2, name: `${playlistsData.total} Playlists` });
         expect(countHeading).toBeInTheDocument();
 
         // verify each playlist item rendered, don't check details here as covered in PlaylistItem tests
@@ -150,12 +150,96 @@ describe('PlaylistsPage', () => {
         const heading1 = screen.getByRole('heading', { level: 1, name: `Your Playlists` });
         expect(heading1).toHaveClass('playlists-title', 'page-title');
 
-        // should have heading level 2 with appropriate class name
-        const heading2 = screen.getByRole('heading', { level: 2, name: `${limit} Playlists` });
+        // should have heading level 2 with appropriate class name (total from API)
+        const heading2 = screen.getByRole('heading', { level: 2, name: `${playlistsData.total} Playlists` });
         expect(heading2).toHaveClass('playlists-count');
 
         // should have ordered list with appropriate class name
         const list = screen.getByRole('list');
         expect(list).toHaveClass('playlists-list');
     });
+
+    test('affiche le nombre correct de playlists provenant de l\'API', async () => {
+		// Mock API to return a specific total different du mock par défaut
+		const apiData = {
+			items: [
+				{ id: 'p1', name: 'A Playlist', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'UserA' }, tracks: { total: 1 }, external_urls: { spotify: 'https://open.spotify.com/playlist/p1' } },
+			],
+			total: 42
+		};
+
+		jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({ data: apiData, error: null });
+
+		// Render the page and wait for load
+		renderPlaylistsPage();
+		await waitForLoadingToFinish();
+
+		// Vérifier que le heading de niveau 2 affiche bien le total renvoyé par l'API
+		const countHeading = await screen.findByRole('heading', { level: 2, name: `${apiData.total} Playlists` });
+		expect(countHeading).toBeInTheDocument();
+	})
+        test('handles empty API response by resetting playlists and total to 0', async () => {
+    jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({});
+    renderPlaylistsPage();
+    await waitForLoadingToFinish();
+
+    const countHeading = await screen.findByRole('heading', { level: 2, name: '0 Playlists' });
+    expect(countHeading).toBeInTheDocument();
+
+    const list = screen.getByRole('list');
+    expect(list).toBeInTheDocument();
+    // Utiliser le matcher fourni par jest-dom au lieu de childElementCount
+    expect(list).toBeEmptyDOMElement();
+
+    // Utiliser queryAllByTestId avec une regex pour éviter l'accès direct aux nœuds
+    const items = screen.queryAllByTestId(/^playlist-item-/);
+    expect(items).toHaveLength(0);
+});
+
+test('renders playlists when API returns playlists array shape', async () => {
+    jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({
+        playlists: [
+            { id: 'pa1', name: 'Playlist A', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerA' }, tracks: { total: 3 }, external_urls: { spotify: 'https://open.spotify.com/playlist/pa1' } },
+            { id: 'pa2', name: 'Playlist B', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerB' }, tracks: { total: 4 }, external_urls: { spotify: 'https://open.spotify.com/playlist/pa2' } }
+        ],
+        total: 2,
+        error: null
+    });
+
+    renderPlaylistsPage();
+    await waitForLoadingToFinish();
+
+    expect(spotifyApi.fetchUserPlaylists).toHaveBeenCalledTimes(1);
+    const countHeading = await screen.findByRole('heading', { level: 2, name: '2 Playlists' });
+    expect(countHeading).toBeInTheDocument();
+    expect(await screen.findByTestId('playlist-item-pa1')).toBeInTheDocument();
+    expect(await screen.findByTestId('playlist-item-pa2')).toBeInTheDocument();
+});
+
+test('uses items.length when data.total is missing', async () => {
+    const itemsOnly = {
+        items: [
+            { id: 'px1', name: 'Only One', images: [{ url: 'https://via.placeholder.com/56' }], owner: { display_name: 'OwnerX' }, tracks: { total: 1 }, external_urls: { spotify: 'https://open.spotify.com/playlist/px1' } }
+        ]
+    };
+
+    jest.spyOn(spotifyApi, 'fetchUserPlaylists').mockResolvedValue({ data: itemsOnly, error: null });
+
+    renderPlaylistsPage();
+    await waitForLoadingToFinish();
+
+    const countHeading = await screen.findByRole('heading', { level: 2, name: '1 Playlists' });
+    expect(countHeading).toBeInTheDocument();
+    expect(await screen.findByTestId('playlist-item-px1')).toBeInTheDocument();
+});
+
+test('does not call API when no token is present', () => {
+    jest.spyOn(window.localStorage.__proto__, 'getItem').mockImplementation(() => null);
+    const fetchSpy = jest.spyOn(spotifyApi, 'fetchUserPlaylists');
+
+    renderPlaylistsPage();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+});
 });
