@@ -46,17 +46,41 @@ generateAccessToken()
     fetchPlaylistById(token, playlistId)
       .then((data) => {
         // extract track names and artist names
-        const tracks = data.playlist.tracks.items.map((item) => ({
-          trackName: item.track.name,
-          artistNames: item.track.artists
-            .map((artist) => artist.name)
-            .join(", "),
-        }));
+        const tracks = (data.playlist && Array.isArray(data.playlist.tracks.items))
+          ? data.playlist.tracks.items.map((item) => {
+              const track = item.track ?? item;
+              return {
+                trackName: track?.name ?? 'Unknown',
+                artistNames: Array.isArray(track?.artists) ? track.artists.map((artist) => artist.name ?? artist.id ?? 'Unknown').join(", ") : '',
+              };
+            })
+          : [];
 
         console.log(
-          `Playlist: ${data.playlist.name} by ${data.playlist.owner.display_name}`
+          `Playlist: ${data.playlist?.name ?? 'Unknown'} by ${data.playlist?.owner?.display_name ?? 'Unknown'}`
         );
         console.table(tracks);
+
+        // compute artist counts
+        const counts = {};
+        if (data.playlist && Array.isArray(data.playlist.tracks.items)) {
+          for (const item of data.playlist.tracks.items) {
+            const track = item.track ?? item;
+            if (!track || !Array.isArray(track.artists)) continue;
+            for (const artist of track.artists) {
+              const name = artist?.name ?? artist?.id ?? 'Unknown';
+              counts[name] = (counts[name] || 0) + 1;
+            }
+          }
+        }
+
+        const countsTable = Object.entries(counts).map(([artist, count]) => ({ artist, count }));
+        if (countsTable.length) {
+          console.log("Artist counts:");
+          console.table(countsTable);
+        } else {
+          console.log("No artist counts available.");
+        }
       })
       .catch((error) => {
         console.error("Error fetching playlist:", error);
