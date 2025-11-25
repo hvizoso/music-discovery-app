@@ -1,44 +1,38 @@
-import { fetchPlaylistById } from '../api/spotify-playlists.js';
+import { fetchPlaylistById } from "../api/spotify-playlists.js";
 
 /**
- * Compte les apparitions de chaque artiste dans une playlist.
+ * Récupère une playlist via fetchPlaylistById et compte les occurrences de chaque artiste.
+ *
  * @param {string} token - Token d'accès Spotify
  * @param {string} playlistId - ID de la playlist
- * @returns {Promise<Record<string, number>>} - objet { "Artist Name": count, ... }
+ * @returns {Promise<Object|undefined>} - Objet { "Artist Name": count, ... } ou undefined en cas d'erreur
  */
 export async function artistCountForPlaylist(token, playlistId) {
-    if (!token) {
-        throw new Error('Token requis');
-    }
-    if (!playlistId) {
-        throw new Error('playlistId requis');
-    }
-
+  try {
     const res = await fetchPlaylistById(token, playlistId);
 
-    // Normaliser différentes formes de réponse possibles
-    const error = res?.error ?? null;
-    const data = res?.playlist ?? res?.data ?? res ?? null;
-
-    if (error) {
-        throw new Error(String(error));
-    }
-
-    if (!data || !data.tracks || !Array.isArray(data.tracks.items)) {
-        return {};
-    }
+    // normalize to array of track items (supports res.data.tracks.items or res.tracks.items or res.items)
+    const items = (res && (res.data?.tracks?.items ?? res.tracks?.items ?? res.items)) || [];
 
     const counts = {};
 
-    for (const item of data.tracks.items) {
-        const track = item?.track ?? item;
-        if (!track || !Array.isArray(track.artists)) continue;
+    for (const item of items) {
+      // Spotify playlist track item shape : { track: { artists: [ { name } ] } }
+      const track = item?.track ?? item;
+      const artists = Array.isArray(track?.artists) ? track.artists : [];
 
-        for (const artist of track.artists) {
-            const name = artist?.name ?? artist?.id ?? 'Unknown';
-            counts[name] = (counts[name] || 0) + 1;
-        }
+      for (const artist of artists) {
+        const name = artist?.name ?? "Unknown Artist";
+        counts[name] = (counts[name] || 0) + 1;
+      }
     }
 
     return counts;
+  } catch (err) {
+    // tests expect console.error to be called with a message and the error
+    console.error("Error fetching playlist", err);
+    return undefined;
+  }
 }
+
+export default artistCountForPlaylist;

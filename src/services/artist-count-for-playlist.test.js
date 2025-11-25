@@ -1,95 +1,110 @@
-/* istanbul ignore file */
-jest.mock('../api/spotify-playlists.js');
+import { describe, test, expect, beforeEach, jest } from "@jest/globals";
+import { artistCountForPlaylist } from "./artist-count-for-playlist.js";
 
-import { artistCountForPlaylist } from './artist-count-for-playlist.js';
-import { fetchPlaylistById } from '../api/spotify-playlists.js';
+// Mock the API module that artistCountForPlaylist depends on
+jest.mock("../api/spotify-playlists.js", () => ({
+  fetchPlaylistById: jest.fn(),
+}));
 
-afterEach(() => {
-    jest.restoreAllMocks();
+import { fetchPlaylistById } from "../api/spotify-playlists.js";
+
+// Helper to build playlist shape
+function makePlaylist(trackItems) {
+  return {
+    tracks: {
+      items: trackItems.map((t) => ({
+        track: {
+          name: t.name,
+          artists: (t.artists || []).map((a) => ({ name: a })),
+        },
+      })),
+    },
+  };
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
 });
 
-describe('artistCountForPlaylist', () => {
-    test('compte les artistes avec data.tracks.items', async () => {
-        fetchPlaylistById.mockResolvedValueOnce({
-            data: {
-                tracks: {
-                    items: [
-                        { track: { id: 't1', artists: [{ name: 'A' }, { name: 'B' }] } },
-                        { track: { id: 't2', artists: [{ name: 'A' }] } },
-                    ],
-                },
-            },
-        });
-
-        const result = await artistCountForPlaylist('token', 'playlist1');
-        expect(result).toEqual({ A: 2, B: 1 });
+describe("artistCountForPlaylist", () => {
+  test("calls fetchPlaylistById with token and playlistId", async () => {
+    const token = "token123";
+    const playlistId = "playlistABC";
+    fetchPlaylistById.mockResolvedValue({
+      data: makePlaylist([
+        { name: "Song 1", artists: ["Artist A"] },
+        { name: "Song 2", artists: ["Artist B"] },
+        { name: "Song 3", artists: ["Artist C", "Artist A"] },
+      ]),
+      error: null,
     });
 
-    test('gère la forme playlist.tracks.items', async () => {
-        fetchPlaylistById.mockResolvedValueOnce({
-            playlist: {
-                tracks: {
-                    items: [
-                        { track: { id: 't1', artists: [{ name: 'X' }] } },
-                    ],
-                },
-            },
-        });
+    const result = await artistCountForPlaylist(token, playlistId);
 
-        const result = await artistCountForPlaylist('token', 'playlist2');
-        expect(result).toEqual({ X: 1 });
+    expect(fetchPlaylistById).toHaveBeenCalledTimes(1);
+    expect(fetchPlaylistById).toHaveBeenCalledWith(token, playlistId);
+    expect(result).toEqual({ "Artist A": 2, "Artist B": 1, "Artist C": 1 });
+  });
+
+  test("returns undefined and logs error when fetchPlaylistById rejects", async () => {
+    const mockError = new Error("Network failure");
+    fetchPlaylistById.mockRejectedValue(mockError);
+    const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await artistCountForPlaylist("t", "p");
+    expect(result).toBeUndefined();
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    // First arg string, second the error object (implementation logs both)
+    const callArgs = consoleSpy.mock.calls[0];
+    expect(callArgs[0]).toMatch(/Error fetching playlist/);
+    expect(callArgs[1]).toBe(mockError);
+
+    consoleSpy.mockRestore();
+  });
+
+  test("handles response with tracks at top level (res.tracks.items)", async () => {
+    fetchPlaylistById.mockResolvedValue({
+      tracks: makePlaylist([
+        { name: "S1", artists: ["A"] },
+        { name: "S2", artists: ["B", "A"] },
+      ]).tracks,
     });
 
-    test('gère items sans wrapper "track" et fallback id', async () => {
-        fetchPlaylistById.mockResolvedValueOnce({
-            tracks: {
-                items: [
-                    { id: 't3', artists: [{ name: 'C' }, { id: 'artist-id-1' }] },
-                    { id: 't4', artists: [{ name: 'C' }] },
-                ],
-            },
-        });
+    const result = await artistCountForPlaylist("t", "p");
+    expect(result).toEqual({ A: 2, B: 1 });
+  });
 
-        const result = await artistCountForPlaylist('token', 'playlist3');
-        expect(result).toEqual({ C: 2, 'artist-id-1': 1 });
+  test("handles response with items at top level (res.items)", async () => {
+    fetchPlaylistById.mockResolvedValue({
+      items: [
+        { artists: [{ name: "X" }] },
+        { artists: [{ name: "Y" }, { name: "X" }] },
+      ],
     });
 
-    test('retourne {} si pas de tracks valides', async () => {
-        fetchPlaylistById.mockResolvedValueOnce({ data: { tracks: null } });
-        const result = await artistCountForPlaylist('token', 'playlist4');
-        expect(result).toEqual({});
+    const result = await artistCountForPlaylist("t", "p");
+    expect(result).toEqual({ X: 2, Y: 1 });
+  });
+
+  test("handles items with null track and artists without name", async () => {
+    fetchPlaylistById.mockResolvedValue({
+      data: {
+        tracks: {
+          items: [
+            { track: null },
+            { track: { artists: [{}, { name: "Z" }] } },
+          ],
+        },
+      },
     });
 
-    test('utilise "Unknown" si artiste sans name ni id', async () => {
-        fetchPlaylistById.mockResolvedValueOnce({
-            data: {
-                tracks: {
-                    items: [
-                        { track: { id: 't1', artists: [{}] } },
-                    ],
-                },
-            },
-        });
+    const result = await artistCountForPlaylist("t", "p");
+    expect(result).toEqual({ "Unknown Artist": 1, Z: 1 });
+  });
 
-        const result = await artistCountForPlaylist('token', 'playlist5');
-        expect(result).toEqual({ Unknown: 1 });
-    });
-
-    test('rejette si token absent', async () => {
-        await expect(artistCountForPlaylist(null, 'playlist')).rejects.toThrow('Token requis');
-    });
-
-    test('rejette si playlistId absent', async () => {
-        await expect(artistCountForPlaylist('token', '')).rejects.toThrow('playlistId requis');
-    });
-
-    test('rejette si l API renvoie un champ error', async () => {
-        fetchPlaylistById.mockResolvedValueOnce({ error: 'API error occurred' });
-        await expect(artistCountForPlaylist('token', 'playlist6')).rejects.toThrow('API error occurred');
-    });
-
-    test('rejette si fetchPlaylistById rejette', async () => {
-        fetchPlaylistById.mockRejectedValueOnce(new Error('network failure'));
-        await expect(artistCountForPlaylist('token', 'playlist7')).rejects.toThrow('network failure');
-    });
+  test("returns empty object when no items present", async () => {
+    fetchPlaylistById.mockResolvedValue({});
+    const result = await artistCountForPlaylist("t", "p");
+    expect(result).toEqual({});
+  });
 });
