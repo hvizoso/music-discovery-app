@@ -6,7 +6,7 @@
 
 .playlist-header {
 	display: flex;
-	align-items: flex-start;
+	align-items: center;
 	gap: 2.2rem;
 	margin-bottom: 2.5rem;
 	margin-top: 2rem;
